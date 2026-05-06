@@ -272,5 +272,15 @@ export const useAudioEngine = () => {
     waveType,
     filterCutoff,
     echoDepth,
+    // Audio context and effects for MIDI integration (pass refs)
+    audioContextRef,
+    effectsChain: {
+      audioContextRef,
+      dryGainNodeRef: dryGainNode,
+      wetGainNodeRef: wetGainNode,
+      filterNodeRef: filterNode,
+      convolutionNodeRef: convolutionNode,
+      masterGainNodeRef: masterGainNode,
+    },
   };
 };

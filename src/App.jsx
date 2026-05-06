@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { useAudioEngine } from './hooks/useAudioEngine';
+import { useMIDIEngine } from './hooks/useMIDIEngine';
 import { SynthesizerPanel } from './components/SynthesizerPanel';
 import { EffectsPanel } from './components/EffectsPanel';
 import { FilteringPanel } from './components/FilteringPanel';
+import { MIDIPanel } from './components/MIDIPanel';
 
 /**
  * Main Application Component
- * Digital Synthesizer & Effects Engine with Web Audio API
+ * Digital Synthesizer & Effects Engine with Web Audio API & MIDI Support
  */
 function App() {
   const audioEngine = useAudioEngine();
+  const midiEngine = useMIDIEngine(audioEngine.audioContextRef, audioEngine.effectsChain);
 
   return (
     <div className="min-h-screen bg-dark-bg p-8">
@@ -19,15 +22,15 @@ function App() {
           ◆ DIGITAL SYNTHESIZER ◆
         </h1>
         <p className="text-sm text-neon-cyan/60 uppercase tracking-widest">
-          Custom Fourier Synthesis • Convolution Effects • Intelligent Filtering
+          Fourier Synthesis • Convolution Effects • Filtering • MIDI Sequencing
         </p>
         <div className="mt-3 h-px bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50" />
       </div>
 
       {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-8 mb-12">
         {/* Left Column: Synthesizer */}
-        <div className="lg:col-span-1">
+        <div>
           <SynthesizerPanel
             isPlaying={audioEngine.isPlaying}
             frequency={audioEngine.frequency}
@@ -41,8 +44,8 @@ function App() {
           />
         </div>
 
-        {/* Middle Column: Effects */}
-        <div className="lg:col-span-1">
+        {/* Second Column: Effects */}
+        <div>
           <EffectsPanel
             echoDepth={audioEngine.echoDepth}
             onEchoDepthChange={audioEngine.updateEchoDepth}
@@ -50,17 +53,30 @@ function App() {
           />
         </div>
 
-        {/* Right Column: Filtering */}
-        <div className="lg:col-span-1">
+        {/* Third Column: Filtering */}
+        <div>
           <FilteringPanel
             filterCutoff={audioEngine.filterCutoff}
             onFilterCutoffChange={audioEngine.updateFilterCutoff}
           />
         </div>
+
+        {/* Fourth Column: MIDI */}
+        <div>
+          <MIDIPanel
+            isPlaying={midiEngine.isPlaying}
+            midiFile={midiEngine.midiFile}
+            transposeAmount={midiEngine.transposeAmount}
+            onPlayMIDI={midiEngine.start}
+            onStopMIDI={midiEngine.stop}
+            onFileUpload={midiEngine.parseMIDIFile}
+            onTransposeChange={midiEngine.updateTranspose}
+          />
+        </div>
       </div>
 
       {/* Footer Info Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {/* DSP Info */}
         <div className="p-6 border-2 border-neon-lime/40 rounded-lg bg-dark-surface/30 backdrop-blur-sm">
           <h3 className="text-neon-lime uppercase font-bold tracking-widest mb-3">
@@ -92,7 +108,25 @@ function App() {
               <strong>Convolution:</strong> y[n] = x[n] + 0.5·x[n-4] (400ms delay)
             </li>
             <li>
-              <strong>Filtering:</strong> Butterworth Low-Pass (Q=1, -6dB/octave roll-off)
+              <strong>Filtering:</strong> Butterworth Low-Pass (Q=2, smooth resonance)
+            </li>
+          </ul>
+        </div>
+
+        {/* MIDI Info */}
+        <div className="p-6 border-2 border-neon-pink/40 rounded-lg bg-dark-surface/30 backdrop-blur-sm">
+          <h3 className="text-neon-pink uppercase font-bold tracking-widest mb-3">
+            🎹 MIDI Sequencing
+          </h3>
+          <ul className="space-y-2 text-xs text-neon-pink/70">
+            <li>
+              <strong>File Format:</strong> Standard MIDI (.mid, .midi)
+            </li>
+            <li>
+              <strong>Transposition:</strong> ±24 semitones (2 octave range)
+            </li>
+            <li>
+              <strong>Effects:</strong> MIDI notes routed through filter & echo
             </li>
           </ul>
         </div>
@@ -103,10 +137,10 @@ function App() {
         <h3 className="text-neon-purple uppercase font-bold tracking-widest mb-4">
           📊 System Specifications
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-xs">
           <div className="flex flex-col">
             <span className="text-neon-purple/60 uppercase">Frequency Range</span>
-            <span className="text-neon-purple font-bold">20 Hz - 2 kHz</span>
+            <span className="text-neon-purple font-bold">20 Hz - 1 kHz</span>
           </div>
           <div className="flex flex-col">
             <span className="text-neon-purple/60 uppercase">Max Harmonics</span>
@@ -114,11 +148,19 @@ function App() {
           </div>
           <div className="flex flex-col">
             <span className="text-neon-purple/60 uppercase">Filter Cutoff</span>
-            <span className="text-neon-purple font-bold">20 Hz - 20 kHz</span>
+            <span className="text-neon-purple font-bold">20 Hz - 1 kHz</span>
           </div>
           <div className="flex flex-col">
             <span className="text-neon-purple/60 uppercase">Echo Delay</span>
             <span className="text-neon-purple font-bold">0 - 400 ms</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-neon-purple/60 uppercase">MIDI Transpose</span>
+            <span className="text-neon-purple font-bold">±24 semitones</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-neon-purple/60 uppercase">Supported Format</span>
+            <span className="text-neon-purple font-bold">.mid / .midi</span>
           </div>
         </div>
       </div>
