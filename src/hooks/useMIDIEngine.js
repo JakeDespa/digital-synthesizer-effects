@@ -27,7 +27,22 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
         const data = e.target.result;
         console.log('MIDI file loaded, size:', data.byteLength, 'bytes');
         
-        const midiData = MidiParser.parse(data);
+        // Convert ArrayBuffer to Uint8Array, then to regular array for parser
+        const uint8Array = new Uint8Array(data);
+        const byteArray = Array.from(uint8Array);
+        console.log('First 10 bytes:', byteArray.slice(0, 10));
+        
+        // Try parsing with both formats
+        let midiData;
+        try {
+          // First try with Uint8Array
+          midiData = MidiParser.parse(uint8Array);
+        } catch (e1) {
+          console.log('Failed with Uint8Array, trying plain array...');
+          // Try with plain array
+          midiData = MidiParser.parse(byteArray);
+        }
+        
         console.log('MIDI parsed successfully:', midiData);
         
         if (!midiData || !midiData.tracks || midiData.tracks.length === 0) {
