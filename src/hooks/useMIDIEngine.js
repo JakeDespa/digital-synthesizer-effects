@@ -16,6 +16,7 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
   const [isPlaying, setIsPlaying] = useState(false);
   const [midiFile, setMidiFile] = useState(null);
   const [transposeAmount, setTransposeAmount] = useState(0); // in semitones
+  const [midiWaveType, setMidiWaveType] = useState('sine'); // MIDI instrument waveform
 
   /**
    * Parse MIDI file and extract note data
@@ -320,7 +321,7 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
       const audioContext = audioContextRef.current;
       const dryGain = effectsChainRefs?.dryGainNodeRef?.current;
 
-      console.log('scheduleNote:', { frequency, startTime, endTime, velocity, hasDryGain: !!dryGain, hasAudioContext: !!audioContext });
+      console.log('scheduleNote:', { frequency, startTime, endTime, velocity, waveType: midiWaveType, hasDryGain: !!dryGain, hasAudioContext: !!audioContext });
 
       if (!audioContext || !dryGain) {
         console.error('Cannot schedule note - missing audioContext or dryGain');
@@ -332,7 +333,15 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
         const gain = audioContext.createGain();
 
         osc.frequency.value = frequency;
-        osc.type = 'sine'; // MIDI notes use sine wave
+        
+        // Set waveform based on MIDI instrument selection
+        // For custom waveforms, we'd need PeriodicWave, but built-in types work for MIDI
+        if (midiWaveType === 'sine' || midiWaveType === 'square' || midiWaveType === 'sawtooth' || midiWaveType === 'triangle') {
+          osc.type = midiWaveType;
+        } else {
+          // Default to sine if unknown type
+          osc.type = 'sine';
+        }
 
         // Apply MIDI velocity (0-127) to gain (0-1)
         const velocityGain = velocity / 127;
@@ -342,7 +351,7 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
         osc.connect(gain);
         gain.connect(dryGain); // Route through effects
 
-        console.log('Starting oscillator at', startTime, 'ending at', endTime);
+        console.log('Starting oscillator at', startTime, 'ending at', endTime, 'type:', osc.type);
         osc.start(startTime);
         osc.stop(endTime);
 
@@ -351,7 +360,7 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
         console.error('Failed to schedule note:', err);
       }
     },
-    [effectsChainRefs]
+    [effectsChainRefs, midiWaveType]
   );
 
   /**
@@ -372,6 +381,13 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
     setTransposeAmount(semitones);
   }, []);
 
+  /**
+   * Change MIDI instrument waveform
+   */
+  const changeMidiWaveType = useCallback((type) => {
+    setMidiWaveType(type);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (isPlaying) {
@@ -384,9 +400,11 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
     isPlaying,
     midiFile,
     transposeAmount,
+    midiWaveType,
     parseMIDIFile,
     start,
     stop,
     updateTranspose,
+    changeMidiWaveType,
   };
 };

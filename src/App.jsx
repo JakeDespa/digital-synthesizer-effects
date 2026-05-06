@@ -67,10 +67,12 @@ function App() {
             isPlaying={midiEngine.isPlaying}
             midiFile={midiEngine.midiFile}
             transposeAmount={midiEngine.transposeAmount}
+            midiWaveType={midiEngine.midiWaveType}
             onPlayMIDI={midiEngine.start}
             onStopMIDI={midiEngine.stop}
             onFileUpload={midiEngine.parseMIDIFile}
             onTransposeChange={midiEngine.updateTranspose}
+            onWaveTypeChange={midiEngine.changeMidiWaveType}
           />
         </div>
       </div>

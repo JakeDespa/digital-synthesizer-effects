@@ -3,16 +3,18 @@ import { Slider, Button, ControlPanel } from './Controls';
 
 /**
  * MIDI Panel
- * Controls for MIDI file upload, playback, and transposition
+ * Controls for MIDI file upload, playback, transposition, and instrument selection
  */
 export const MIDIPanel = ({
   isPlaying,
   midiFile,
   transposeAmount,
+  midiWaveType,
   onPlayMIDI,
   onStopMIDI,
   onFileUpload,
   onTransposeChange,
+  onWaveTypeChange,
 }) => {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -94,6 +96,28 @@ export const MIDIPanel = ({
               <strong>MIDI Transposition:</strong> Shift all MIDI notes up or down. Range: ±24 semitones (±2 octaves).
               Current: <span className="text-neon-orange">{transposeAmount > 0 ? '+' : ''}{transposeAmount}</span> semitones.
             </p>
+          </div>
+
+          {/* Instrument/Waveform Selection */}
+          <div className="mb-6">
+            <label className="block text-sm font-bold text-neon-magenta uppercase tracking-wider mb-3">
+              Instrument Type
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {['sine', 'square', 'sawtooth', 'triangle'].map((waveform) => (
+                <button
+                  key={waveform}
+                  onClick={() => onWaveTypeChange(waveform)}
+                  className={`py-2 px-3 font-bold uppercase tracking-wider border-2 transition-all duration-200 rounded-lg text-xs ${
+                    midiWaveType === waveform
+                      ? 'border-neon-magenta bg-neon-magenta text-dark-bg shadow-neon'
+                      : 'border-neon-magenta/50 text-neon-magenta/70 hover:border-neon-magenta hover:text-neon-magenta'
+                  }`}
+                >
+                  {waveform.charAt(0).toUpperCase() + waveform.slice(1)}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Note Information Grid */}
