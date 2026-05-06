@@ -5,7 +5,7 @@ import MidiParser from 'midi-parser-js';
  * MIDI Engine Hook
  * Handles MIDI file parsing and playback with pitch transposition
  */
-export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
+export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContext) => {
   const midiDataRef = useRef(null);
   const midiOscillatorsRef = useRef([]);
   const midiNotesRef = useRef([]);
@@ -44,12 +44,35 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
         }
         
         console.log('MIDI parsed successfully:', midiData);
+        console.log('MIDI data structure:', JSON.stringify(Object.keys(midiData).map(k => ({ key: k, type: typeof midiData[k], value: midiData[k] })), null, 2));
         
-        if (!midiData || !midiData.tracks || midiData.tracks.length === 0) {
-          throw new Error('MIDI file contains no tracks');
+        // The midi-parser-js returns track data in different format
+        // Check if we can access tracks via different property names
+        let tracksArray = null;
+        if (Array.isArray(midiData.tracks)) {
+          tracksArray = midiData.tracks;
+        } else if (midiData.track && Array.isArray(midiData.track)) {
+          tracksArray = midiData.track;
+        } else if (midiData.Tracks && Array.isArray(midiData.Tracks)) {
+          tracksArray = midiData.Tracks;
+        } else {
+          // Maybe tracks are in a different format - look through all properties
+          for (const key in midiData) {
+            if (Array.isArray(midiData[key]) && midiData[key].length > 0 && 
+                typeof midiData[key][0] === 'object') {
+              console.log(`Found potential tracks in property '${key}'`);
+              tracksArray = midiData[key];
+              break;
+            }
+          }
         }
         
-        processMIDIData(midiData);
+        if (!tracksArray || !Array.isArray(tracksArray) || tracksArray.length === 0) {
+          console.error('Could not find valid tracks in MIDI data');
+          throw new Error('MIDI file contains no valid tracks');
+        }
+        
+        processMIDIData(midiData, tracksArray);
         setMidiFile(file.name);
         console.log('MIDI file ready for playback');
       } catch (err) {
@@ -68,32 +91,60 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
   /**
    * Process MIDI data and extract note events
    */
-  const processMIDIData = useCallback((midiData) => {
-    if (!midiData || !midiData.tracks) {
-      console.error('Invalid MIDI data structure');
-      throw new Error('Invalid MIDI data structure');
+  const processMIDIData = useCallback((midiData, tracksArray) => {
+    console.log('processMIDIData called with tracksArray:', tracksArray ? `${tracksArray.length} tracks` : 'null');
+    console.log('tracksArray contents:', JSON.stringify(tracksArray?.slice(0, 1) || null, null, 2));
+    
+    if (!tracksArray || !Array.isArray(tracksArray) || tracksArray.length === 0) {
+      console.error('No valid tracks provided to processMIDIData');
+      throw new Error('MIDI file contains no tracks');
     }
 
     const notes = [];
-    const ticksPerQuarter = midiData.header?.ticksPerQuarter || 480;
+    const headerData = midiData?.header || midiData?.Header || {};
+    const ticksPerQuarter = headerData?.ticksPerQuarter || headerData?.ticksPerQua || midiData?.ticksPerQuarter || 480;
     let currentTempo = 500000; // Default: 120 BPM in microseconds per quarter note
 
     // Process all tracks
-    midiData.tracks.forEach((track, trackIndex) => {
+    tracksArray.forEach((track, trackIndex) => {
+      console.log(`Processing track ${trackIndex}, type:`, typeof track, 'isArray:', Array.isArray(track), 'length:', track ? track.length : 'N/A');
+      
       let time = 0;
       let trackNotes = 0;
       
-      track.forEach((event) => {
+      // Handle different track event formats
+      let events = [];
+      if (Array.isArray(track)) {
+        events = track;
+      } else if (typeof track === 'object' && track !== null) {
+        // The midi-parser-js library uses track.event (lowercase, singular)
+        if (Array.isArray(track.event)) {
+          events = track.event;
+        } else if (Array.isArray(track.events)) {
+          events = track.events;
+        } else if (Array.isArray(track.Event)) {
+          events = track.Event;
+        } else {
+          // Try to extract events from numeric properties
+          events = Object.values(track).filter(e => e && Array.isArray(e) && e.length > 0 && typeof e[0] === 'object');
+        }
+      }
+      
+      console.log(`Track ${trackIndex}: found ${events.length} events (${Array.isArray(events[0]) ? 'nested array' : 'direct events'})`);
+      
+      events.forEach((event, eventIdx) => {
+        if (!event) return;
+        
         time += event.deltaTime || 0;
 
-        // Handle tempo changes
-        if (event.meta === true && event.metaType === 81 && event.data) {
+        // Handle tempo changes (meta event)
+        if ((event.meta === true || event.type === 0xFF) && event.metaType === 81 && event.data) {
           currentTempo = event.data;
           console.log(`Tempo set to ${120000000 / currentTempo} BPM`);
         }
 
-        // Handle note on events
-        if (event.type === 9 && event.data && event.data[0] !== undefined) {
+        // Handle note on events (status 0x90)
+        if ((event.type === 9 || event.type === 0x90) && event.data && event.data[0] !== undefined) {
           const noteNumber = event.data[0];
           const velocity = event.data[1] || 0;
 
@@ -108,11 +159,12 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
               duration: 0.5, // Default until note off
             });
             trackNotes++;
+            console.log(`Note ON: note=${noteNumber}, vel=${velocity}, time=${timeInSeconds}`);
           }
         }
 
-        // Handle note off events (type 8) or note on with velocity 0 (type 9)
-        if ((event.type === 8 || (event.type === 9 && event.data && event.data[1] === 0)) && event.data && event.data[0] !== undefined) {
+        // Handle note off events (status 0x80 or 0x90 with velocity 0)
+        if ((event.type === 8 || event.type === 0x80 || (event.type === 9 && event.data && event.data[1] === 0)) && event.data && event.data[0] !== undefined) {
           const noteNumber = event.data[0];
           const timeInSeconds = (time / ticksPerQuarter) * (currentTempo / 1000000);
 
@@ -120,16 +172,20 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
           for (let i = notes.length - 1; i >= 0; i--) {
             if (notes[i].noteNumber === noteNumber && notes[i].duration === 0.5) {
               notes[i].duration = Math.max(0.05, timeInSeconds - notes[i].startTime);
+              console.log(`Note OFF: note=${noteNumber}, duration=${notes[i].duration}`);
               break;
             }
           }
         }
       });
       
-      console.log(`Track ${trackIndex}: ${trackNotes} note events`);
+      console.log(`Track ${trackIndex}: ${trackNotes} note events extracted`);
     });
 
     console.log(`Total notes extracted: ${notes.length}`);
+    if (notes.length === 0) {
+      console.warn('No notes found in MIDI file!');
+    }
 
     midiNotesRef.current = notes.sort((a, b) => a.startTime - b.startTime);
     midiDataRef.current = midiData;
@@ -168,38 +224,70 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
    * Start MIDI playback
    */
   const start = useCallback(async () => {
-    if (isPlaying || !midiNotesRef.current || !audioContextRef.current) return;
+    console.log('START called - isPlaying:', isPlaying, 'hasNotes:', midiNotesRef.current?.length);
+    
+    if (isPlaying || !midiNotesRef.current) {
+      console.log('START EARLY RETURN - isPlaying:', isPlaying, 'hasNotes:', midiNotesRef.current?.length);
+      return;
+    }
+
+    // Initialize audio context if needed (in case synthesizer hasn't been played)
+    if (!audioContextRef.current) {
+      console.log('MIDI: Initializing audio context');
+      if (initAudioContext) {
+        initAudioContext();
+      }
+    }
+
+    if (!audioContextRef.current) {
+      console.error('MIDI: Failed to initialize audio context');
+      return;
+    }
 
     const audioContext = audioContextRef.current;
+
+    // Ensure effects chain is initialized
+    const dryGain = effectsChainRefs?.dryGainNodeRef?.current;
+    if (!dryGain) {
+      console.error('MIDI: Effects chain (dryGainNode) not available. Audio context may not be properly initialized.');
+      return;
+    }
 
     // Resume audio context if suspended
     if (audioContext.state === 'suspended') {
       try {
         await audioContext.resume();
+        console.log('Audio context resumed');
       } catch (err) {
         console.error('Failed to resume audio context:', err);
         return;
       }
     }
 
+    console.log('Starting MIDI playback with', midiNotesRef.current.length, 'notes');
     playbackTimeRef.current = audioContext.currentTime;
-    lastScheduledTimeRef.current = 0;
+    lastScheduledTimeRef.current = -99999; // Initialize to very small number so first notes get scheduled
     setIsPlaying(true);
 
     const scheduleNotes = () => {
       const currentTime = audioContextRef.current.currentTime;
       const scheduleAheadTime = 0.1; // Schedule 100ms ahead
 
+      console.log('scheduleNotes called - currentTime:', currentTime, 'playbackStart:', playbackTimeRef.current);
+
       // Schedule all notes that should play
-      midiNotesRef.current.forEach((note) => {
+      midiNotesRef.current.forEach((note, idx) => {
         const audioCTXStartTime = playbackTimeRef.current + note.startTime;
         const noteEndTime = audioCTXStartTime + note.duration;
+
+        console.log(`Note ${idx}: scheduled=${lastScheduledTimeRef.current >= audioCTXStartTime}, shouldSchedule=${currentTime + scheduleAheadTime >= audioCTXStartTime}, startTime=${audioCTXStartTime}`);
 
         // Schedule this note if it hasn't been scheduled yet
         if (
           lastScheduledTimeRef.current < audioCTXStartTime &&
           currentTime + scheduleAheadTime >= audioCTXStartTime
         ) {
+          console.log(`Scheduling note ${idx} at ${audioCTXStartTime}`);
           const frequency = midiNoteToFrequency(note.noteNumber, transposeAmount);
           scheduleNote(frequency, audioCTXStartTime, noteEndTime, note.velocity);
           lastScheduledTimeRef.current = Math.max(lastScheduledTimeRef.current, audioCTXStartTime);
@@ -215,13 +303,14 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
       if (currentTime < playbackTimeRef.current + maxEndTime) {
         animationIdRef.current = requestAnimationFrame(scheduleNotes);
       } else {
+        console.log('MIDI playback complete');
         setIsPlaying(false);
         stopAllNotes();
       }
     };
 
     animationIdRef.current = requestAnimationFrame(scheduleNotes);
-  }, [isPlaying, transposeAmount, midiNoteToFrequency]);
+  }, [isPlaying, transposeAmount, midiNoteToFrequency, effectsChainRefs, initAudioContext]);
 
   /**
    * Schedule a single MIDI note to play
@@ -231,7 +320,12 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
       const audioContext = audioContextRef.current;
       const dryGain = effectsChainRefs?.dryGainNodeRef?.current;
 
-      if (!audioContext || !dryGain) return;
+      console.log('scheduleNote:', { frequency, startTime, endTime, velocity, hasDryGain: !!dryGain, hasAudioContext: !!audioContext });
+
+      if (!audioContext || !dryGain) {
+        console.error('Cannot schedule note - missing audioContext or dryGain');
+        return;
+      }
 
       try {
         const osc = audioContext.createOscillator();
@@ -248,6 +342,7 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
         osc.connect(gain);
         gain.connect(dryGain); // Route through effects
 
+        console.log('Starting oscillator at', startTime, 'ending at', endTime);
         osc.start(startTime);
         osc.stop(endTime);
 

@@ -12,7 +12,7 @@ import { MIDIPanel } from './components/MIDIPanel';
  */
 function App() {
   const audioEngine = useAudioEngine();
-  const midiEngine = useMIDIEngine(audioEngine.audioContextRef, audioEngine.effectsChain);
+  const midiEngine = useMIDIEngine(audioEngine.audioContextRef, audioEngine.effectsChain, audioEngine.initAudioContext);
 
   return (
     <div className="min-h-screen bg-dark-bg p-8">

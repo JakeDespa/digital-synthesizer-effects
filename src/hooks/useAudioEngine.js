@@ -265,6 +265,8 @@ export const useAudioEngine = () => {
     changeWaveType,
     updateFilterCutoff,
     updateEchoDepth,
+    // Initialization
+    initAudioContext,
     // State
     isPlaying,
     frequency,
