@@ -38,7 +38,7 @@ export const useAudioEngine = () => {
 
     // Master output gain
     masterGainNode.current = audioCtx.createGain();
-    masterGainNode.current.gain.value = 0.4; // Main volume control (increased for clarity)
+    masterGainNode.current.gain.value = 0.8; // Main volume control (increased for clarity)
     masterGainNode.current.connect(audioCtx.destination);
 
     // Low-pass filter (last effect in chain)

@@ -10,8 +10,8 @@ export const FilteringPanel = ({
   onFilterCutoffChange,
 }) => {
   // Calculate normalized cutoff (for display purposes)
-  const nyquistFreq = 24000; // Typical upper limit for human hearing, half of 48kHz sample rate
-  const normalizedCutoff = (filterCutoff / nyquistFreq) * 100;
+  const maxCutoffFreq = 1000; // Match the slider range (20-1000Hz)
+  const normalizedCutoff = ((filterCutoff - 20) / (maxCutoffFreq - 20)) * 100;
 
   return (
     <ControlPanel title="FILTERING">

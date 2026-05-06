@@ -16,7 +16,31 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
   const [isPlaying, setIsPlaying] = useState(false);
   const [midiFile, setMidiFile] = useState(null);
   const [transposeAmount, setTransposeAmount] = useState(0); // in semitones
-  const [midiWaveType, setMidiWaveType] = useState('sine'); // MIDI instrument waveform
+  const [midiWaveType, setMidiWaveType] = useState('original'); // MIDI instrument waveform
+  const [playbackSpeed, setPlaybackSpeed] = useState(1); // 1.0 = original speed
+
+  const getEventChannel = useCallback((event) => {
+    if (typeof event?.channel === 'number') return event.channel;
+    if (Array.isArray(event?.data) && typeof event.data[2] === 'number') return event.data[2];
+    return 0;
+  }, []);
+
+  const getProgramNumber = useCallback((event) => {
+    if (typeof event?.programNumber === 'number') return event.programNumber;
+    if (Array.isArray(event?.data) && typeof event.data[0] === 'number') return event.data[0];
+    if (typeof event?.data === 'number') return event.data;
+    return 0;
+  }, []);
+
+  const getWaveformFromProgram = useCallback((programNumber = 0) => {
+    // Approximate General MIDI timbres with basic oscillator types.
+    if (programNumber <= 15) return 'triangle';
+    if (programNumber <= 39) return 'sawtooth';
+    if (programNumber <= 63) return 'square';
+    if (programNumber <= 95) return 'triangle';
+    if (programNumber <= 111) return 'sine';
+    return 'sawtooth';
+  }, []);
 
   /**
    * Parse MIDI file and extract note data
@@ -105,6 +129,7 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
     const headerData = midiData?.header || midiData?.Header || {};
     const ticksPerQuarter = headerData?.ticksPerQuarter || headerData?.ticksPerQua || midiData?.ticksPerQuarter || 480;
     let currentTempo = 500000; // Default: 120 BPM in microseconds per quarter note
+    const channelPrograms = {};
 
     // Process all tracks
     tracksArray.forEach((track, trackIndex) => {
@@ -144,10 +169,20 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
           console.log(`Tempo set to ${120000000 / currentTempo} BPM`);
         }
 
+        // Track instrument changes (Program Change: status 0xC0)
+        if (event.type === 12 || event.type === 0xC0) {
+          const channel = getEventChannel(event);
+          const programNumber = getProgramNumber(event);
+          channelPrograms[channel] = programNumber;
+          console.log(`Program change: channel=${channel}, program=${programNumber}`);
+        }
+
         // Handle note on events (status 0x90)
         if ((event.type === 9 || event.type === 0x90) && event.data && event.data[0] !== undefined) {
           const noteNumber = event.data[0];
           const velocity = event.data[1] || 0;
+          const channel = getEventChannel(event);
+          const programNumber = channelPrograms[channel] ?? 0;
 
           if (velocity > 0) {
             // Convert time to seconds
@@ -156,6 +191,8 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
             notes.push({
               noteNumber,
               velocity,
+              channel,
+              programNumber,
               startTime: timeInSeconds,
               duration: 0.5, // Default until note off
             });
@@ -190,7 +227,7 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
 
     midiNotesRef.current = notes.sort((a, b) => a.startTime - b.startTime);
     midiDataRef.current = midiData;
-  }, []);
+  }, [getEventChannel, getProgramNumber]);
 
   /**
    * Convert MIDI note number to frequency in Hz
@@ -278,8 +315,10 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
 
       // Schedule all notes that should play
       midiNotesRef.current.forEach((note, idx) => {
-        const audioCTXStartTime = playbackTimeRef.current + note.startTime;
-        const noteEndTime = audioCTXStartTime + note.duration;
+        const scaledStartTime = note.startTime / playbackSpeed;
+        const scaledDuration = note.duration / playbackSpeed;
+        const audioCTXStartTime = playbackTimeRef.current + scaledStartTime;
+        const noteEndTime = audioCTXStartTime + scaledDuration;
 
         console.log(`Note ${idx}: scheduled=${lastScheduledTimeRef.current >= audioCTXStartTime}, shouldSchedule=${currentTime + scheduleAheadTime >= audioCTXStartTime}, startTime=${audioCTXStartTime}`);
 
@@ -290,14 +329,14 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
         ) {
           console.log(`Scheduling note ${idx} at ${audioCTXStartTime}`);
           const frequency = midiNoteToFrequency(note.noteNumber, transposeAmount);
-          scheduleNote(frequency, audioCTXStartTime, noteEndTime, note.velocity);
+          scheduleNote(frequency, audioCTXStartTime, noteEndTime, note.velocity, note.programNumber);
           lastScheduledTimeRef.current = Math.max(lastScheduledTimeRef.current, audioCTXStartTime);
         }
       });
 
       // Calculate total MIDI duration
       const maxEndTime = Math.max(
-        ...midiNotesRef.current.map((n) => n.startTime + n.duration)
+        ...midiNotesRef.current.map((n) => (n.startTime / playbackSpeed) + (n.duration / playbackSpeed))
       );
 
       // Continue scheduling if playback is still ongoing
@@ -311,17 +350,17 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
     };
 
     animationIdRef.current = requestAnimationFrame(scheduleNotes);
-  }, [isPlaying, transposeAmount, midiNoteToFrequency, effectsChainRefs, initAudioContext]);
+  }, [isPlaying, transposeAmount, playbackSpeed, midiNoteToFrequency, effectsChainRefs, initAudioContext]);
 
   /**
    * Schedule a single MIDI note to play
    */
   const scheduleNote = useCallback(
-    (frequency, startTime, endTime, velocity) => {
+    (frequency, startTime, endTime, velocity, programNumber = 0) => {
       const audioContext = audioContextRef.current;
       const dryGain = effectsChainRefs?.dryGainNodeRef?.current;
 
-      console.log('scheduleNote:', { frequency, startTime, endTime, velocity, waveType: midiWaveType, hasDryGain: !!dryGain, hasAudioContext: !!audioContext });
+      console.log('scheduleNote:', { frequency, startTime, endTime, velocity, waveType: midiWaveType, programNumber, hasDryGain: !!dryGain, hasAudioContext: !!audioContext });
 
       if (!audioContext || !dryGain) {
         console.error('Cannot schedule note - missing audioContext or dryGain');
@@ -333,13 +372,15 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
         const gain = audioContext.createGain();
 
         osc.frequency.value = frequency;
-        
-        // Set waveform based on MIDI instrument selection
-        // For custom waveforms, we'd need PeriodicWave, but built-in types work for MIDI
-        if (midiWaveType === 'sine' || midiWaveType === 'square' || midiWaveType === 'sawtooth' || midiWaveType === 'triangle') {
-          osc.type = midiWaveType;
+
+        // Use either manual waveform choice or program-based waveform approximation.
+        const selectedWaveform = midiWaveType === 'original'
+          ? getWaveformFromProgram(programNumber)
+          : midiWaveType;
+
+        if (selectedWaveform === 'sine' || selectedWaveform === 'square' || selectedWaveform === 'sawtooth' || selectedWaveform === 'triangle') {
+          osc.type = selectedWaveform;
         } else {
-          // Default to sine if unknown type
           osc.type = 'sine';
         }
 
@@ -360,7 +401,7 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
         console.error('Failed to schedule note:', err);
       }
     },
-    [effectsChainRefs, midiWaveType]
+    [effectsChainRefs, midiWaveType, getWaveformFromProgram]
   );
 
   /**
@@ -388,6 +429,13 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
     setMidiWaveType(type);
   }, []);
 
+  /**
+   * Update MIDI playback speed multiplier
+   */
+  const updatePlaybackSpeed = useCallback((speed) => {
+    setPlaybackSpeed(speed);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (isPlaying) {
@@ -401,10 +449,12 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs, initAudioContex
     midiFile,
     transposeAmount,
     midiWaveType,
+    playbackSpeed,
     parseMIDIFile,
     start,
     stop,
     updateTranspose,
     changeMidiWaveType,
+    updatePlaybackSpeed,
   };
 };

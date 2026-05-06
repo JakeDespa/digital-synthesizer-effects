@@ -10,11 +10,13 @@ export const MIDIPanel = ({
   midiFile,
   transposeAmount,
   midiWaveType,
+  playbackSpeed,
   onPlayMIDI,
   onStopMIDI,
   onFileUpload,
   onTransposeChange,
   onWaveTypeChange,
+  onPlaybackSpeedChange,
 }) => {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -91,10 +93,21 @@ export const MIDIPanel = ({
             unit="semitones"
           />
 
+          <Slider
+            label="Playback Speed"
+            value={playbackSpeed}
+            min={0.5}
+            max={2}
+            step={0.1}
+            onChange={onPlaybackSpeedChange}
+            unit="x"
+          />
+
           <div className="p-4 border-2 border-neon-orange/40 rounded-lg bg-dark-border/20 mb-6">
             <p className="text-xs text-neon-orange/70 leading-relaxed">
               <strong>MIDI Transposition:</strong> Shift all MIDI notes up or down. Range: ±24 semitones (±2 octaves).
               Current: <span className="text-neon-orange">{transposeAmount > 0 ? '+' : ''}{transposeAmount}</span> semitones.
+              Speed: <span className="text-neon-orange">{playbackSpeed.toFixed(1)}x</span>.
             </p>
           </div>
 
@@ -104,7 +117,7 @@ export const MIDIPanel = ({
               Instrument Type
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {['sine', 'square', 'sawtooth', 'triangle'].map((waveform) => (
+              {['original', 'sine', 'square', 'sawtooth', 'triangle'].map((waveform) => (
                 <button
                   key={waveform}
                   onClick={() => onWaveTypeChange(waveform)}
@@ -118,6 +131,9 @@ export const MIDIPanel = ({
                 </button>
               ))}
             </div>
+            <p className="text-xs text-neon-magenta/60 mt-2 leading-relaxed">
+              Original uses MIDI program changes to approximate the source instrument family.
+            </p>
           </div>
 
           {/* Note Information Grid */}
