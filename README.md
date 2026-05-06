@@ -19,10 +19,17 @@ A professional-grade web-based audio synthesizer with custom Fourier synthesis, 
 - Uses Web Audio API's `ConvolverNode` for authentic convolution processing
 
 ### Intelligent Low-Pass Filtering
-- **Butterworth Filter Design**: Q=1 for smooth, natural roll-off (-6dB/octave)
-- **Dynamic Cutoff Control**: Adjust filter frequency from 20Hz to 20kHz
+- **Butterworth Filter Design**: Q=2 for resonant peak responses
+- **Dynamic Cutoff Control**: Adjust filter frequency from 20Hz to 1kHz
 - **BiquadFilterNode Implementation**: Professional-grade filtering using Web Audio API
-- Removes high-frequency noise (e.g., 3000+ Hz hiss)
+- Removes high-frequency noise and shapes tone
+
+### MIDI Sequencing
+- **Load MIDI Files**: Upload .mid or .midi files for playback
+- **Pitch Transposition**: Transpose MIDI notes by ±24 semitones (±2 octaves)
+- **Effect Routing**: MIDI notes pass through the same filter and echo effects
+- **Velocity Support**: MIDI velocity mapped to note amplitude
+- **Standard MIDI Parser**: Full support for timing, tempo, and note events
 
 ### Cyberpunk Aesthetic UI
 - **Neon Color Scheme**: Cyan, Magenta, Lime, and Orange accents
@@ -95,11 +102,14 @@ npm run preview
 ### Usage
 
 1. **Start the Synthesizer**: Click the **PLAY** button to activate audio generation
-2. **Adjust Frequency**: Use the frequency slider (20Hz - 2kHz)
+2. **Adjust Frequency**: Use the frequency slider (20Hz - 1kHz)
 3. **Control Harmonics**: Select number of harmonics (2 - 256)
 4. **Choose Waveform**: Switch between Square, Sawtooth, or Sine
 5. **Add Echo**: Increase the Echo Depth slider for convolution effects
 6. **Filter Noise**: Adjust the Cutoff Frequency to remove high-frequency noise
+7. **Load MIDI**: Click the MIDI panel to upload a .mid or .midi file
+8. **Transpose MIDI**: Use the transpose slider (±24 semitones) to shift pitch
+9. **Play MIDI**: Click the PLAY button on the MIDI panel to sequence
 
 ## 📁 Project Structure
 
@@ -110,9 +120,11 @@ signals/
 │   │   ├── Controls.jsx          # Reusable UI components
 │   │   ├── SynthesizerPanel.jsx  # Oscillator & frequency controls
 │   │   ├── EffectsPanel.jsx      # Echo & convolution controls
-│   │   └── FilteringPanel.jsx    # Low-pass filter controls
+│   │   ├── FilteringPanel.jsx    # Low-pass filter controls
+│   │   └── MIDIPanel.jsx         # MIDI file upload & transposition
 │   ├── hooks/
-│   │   └── useAudioEngine.js     # Audio processing logic (DSP)
+│   │   ├── useAudioEngine.js     # Audio processing logic (DSP)
+│   │   └── useMIDIEngine.js      # MIDI parsing and playback
 │   ├── App.jsx                   # Main application component
 │   ├── main.jsx                  # React entry point
 │   └── index.css                 # Global styles & Tailwind
@@ -153,6 +165,28 @@ In `useAudioEngine.js`, modify the filter node:
 filterNode.current.type = 'highpass'; // Switch to high-pass
 ```
 
+### Modify MIDI Transposition Range
+In `src/components/MIDIPanel.jsx`, adjust the slider range:
+
+```javascript
+<Slider
+  label="Transpose"
+  value={transposeAmount}
+  min={-36}  // Change from -24 for wider range
+  max={36}
+  step={1}
+  onChange={onTransposeChange}
+  unit="semitones"
+/>
+```
+
+### Adjust MIDI Velocity Handling
+In `src/hooks/useMIDIEngine.js`, modify the velocity gain calculation:
+
+```javascript
+const velocityGain = (velocity / 127) * 0.5; // Adjust multiplier for loudness
+```
+
 ## 🔊 Audio Specifications
 
 | Parameter | Min | Max | Default | Unit |
@@ -168,6 +202,8 @@ filterNode.current.type = 'highpass'; // Switch to high-pass
 - [Fourier Series & Synthesis](https://en.wikipedia.org/wiki/Fourier_series)
 - [Digital Signal Processing Fundamentals](https://en.wikipedia.org/wiki/Digital_signal_processing)
 - [Butterworth Filter Design](https://en.wikipedia.org/wiki/Butterworth_filter)
+- [MIDI Specification](https://www.midi.org/specifications)
+- [Pitch Transposition (Music Theory)](https://en.wikipedia.org/wiki/Transposition_(music))
 
 ## ⚙️ Browser Support
 
@@ -185,8 +221,9 @@ This project is open-source and available for educational and commercial use.
 This synthesizer is an excellent learning tool for:
 - **DSP Concepts**: Fourier analysis, convolution, filtering
 - **Web Audio API**: Real-time audio processing in browsers
+- **MIDI Processing**: File parsing, note sequencing, pitch transposition
 - **React Patterns**: Custom hooks, state management, component composition
-- **Audio Engineering**: Frequency response, resonance, signal flow
+- **Audio Engineering**: Frequency response, resonance, signal flow, synthesis
 
 ## 🤝 Contributing
 
