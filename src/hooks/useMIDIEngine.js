@@ -25,12 +25,27 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
     reader.onload = (e) => {
       try {
         const data = e.target.result;
+        console.log('MIDI file loaded, size:', data.byteLength, 'bytes');
+        
         const midiData = MidiParser.parse(data);
+        console.log('MIDI parsed successfully:', midiData);
+        
+        if (!midiData || !midiData.tracks || midiData.tracks.length === 0) {
+          throw new Error('MIDI file contains no tracks');
+        }
+        
         processMIDIData(midiData);
         setMidiFile(file.name);
+        console.log('MIDI file ready for playback');
       } catch (err) {
         console.error('Failed to parse MIDI file:', err);
+        alert(`Error parsing MIDI file: ${err.message}`);
+        setMidiFile(null);
       }
+    };
+    reader.onerror = () => {
+      console.error('FileReader error:', reader.error);
+      alert('Failed to read MIDI file');
     };
     reader.readAsArrayBuffer(file);
   }, []);
@@ -40,29 +55,32 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
    */
   const processMIDIData = useCallback((midiData) => {
     if (!midiData || !midiData.tracks) {
-      console.error('Invalid MIDI data');
-      return;
+      console.error('Invalid MIDI data structure');
+      throw new Error('Invalid MIDI data structure');
     }
 
     const notes = [];
-    const ticksPerQuarter = midiData.header.ticksPerQuarter;
+    const ticksPerQuarter = midiData.header?.ticksPerQuarter || 480;
     let currentTempo = 500000; // Default: 120 BPM in microseconds per quarter note
 
     // Process all tracks
-    midiData.tracks.forEach((track) => {
+    midiData.tracks.forEach((track, trackIndex) => {
       let time = 0;
+      let trackNotes = 0;
+      
       track.forEach((event) => {
-        time += event.deltaTime;
+        time += event.deltaTime || 0;
 
         // Handle tempo changes
-        if (event.meta === true && event.metaType === 81) {
-          currentTempo = event.data; // microseconds per quarter note
+        if (event.meta === true && event.metaType === 81 && event.data) {
+          currentTempo = event.data;
+          console.log(`Tempo set to ${120000000 / currentTempo} BPM`);
         }
 
         // Handle note on events
-        if (event.type === 9 && event.data[1] !== undefined) {
+        if (event.type === 9 && event.data && event.data[0] !== undefined) {
           const noteNumber = event.data[0];
-          const velocity = event.data[1];
+          const velocity = event.data[1] || 0;
 
           if (velocity > 0) {
             // Convert time to seconds
@@ -72,32 +90,31 @@ export const useMIDIEngine = (audioContextRef, effectsChainRefs) => {
               noteNumber,
               velocity,
               startTime: timeInSeconds,
+              duration: 0.5, // Default until note off
             });
+            trackNotes++;
           }
         }
 
-        // Handle note off events
-        if ((event.type === 8 || (event.type === 9 && event.data[1] === 0)) && event.data[0] !== undefined) {
+        // Handle note off events (type 8) or note on with velocity 0 (type 9)
+        if ((event.type === 8 || (event.type === 9 && event.data && event.data[1] === 0)) && event.data && event.data[0] !== undefined) {
           const noteNumber = event.data[0];
           const timeInSeconds = (time / ticksPerQuarter) * (currentTempo / 1000000);
 
           // Find matching note on and set duration
           for (let i = notes.length - 1; i >= 0; i--) {
-            if (notes[i].noteNumber === noteNumber && !notes[i].duration) {
+            if (notes[i].noteNumber === noteNumber && notes[i].duration === 0.5) {
               notes[i].duration = Math.max(0.05, timeInSeconds - notes[i].startTime);
               break;
             }
           }
         }
       });
+      
+      console.log(`Track ${trackIndex}: ${trackNotes} note events`);
     });
 
-    // Ensure all notes have a duration
-    notes.forEach((note) => {
-      if (!note.duration) {
-        note.duration = 0.5; // Default 500ms
-      }
-    });
+    console.log(`Total notes extracted: ${notes.length}`);
 
     midiNotesRef.current = notes.sort((a, b) => a.startTime - b.startTime);
     midiDataRef.current = midiData;

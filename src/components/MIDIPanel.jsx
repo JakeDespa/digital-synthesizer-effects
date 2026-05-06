@@ -16,12 +16,18 @@ export const MIDIPanel = ({
 }) => {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
-    if (file && file.type === 'audio/midi') {
-      onFileUpload(file);
-      e.target.value = ''; // Reset input
-    } else if (file) {
-      alert('Please select a valid MIDI file');
-      e.target.value = '';
+    if (file) {
+      // Check file extension instead of MIME type (more reliable)
+      const isMIDI = file.name.toLowerCase().endsWith('.mid') || 
+                     file.name.toLowerCase().endsWith('.midi');
+      
+      if (isMIDI) {
+        onFileUpload(file);
+        e.target.value = ''; // Reset input
+      } else {
+        alert('Please select a valid MIDI file (.mid or .midi)');
+        e.target.value = '';
+      }
     }
   };
 
