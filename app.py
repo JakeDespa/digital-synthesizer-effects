@@ -147,7 +147,14 @@ def render_note(
 
 
 def parse_midi_file(path: Path) -> list[MidiNote]:
-    midi_file = mido.MidiFile(path)
+    try:
+        midi_file = mido.MidiFile(path)
+    except (ValueError, OSError) as e:
+        error_msg = str(e)
+        if "data byte must be in range" in error_msg:
+            raise ValueError(f"MIDI file '{path.name}' is corrupted or has invalid data. Please use a different MIDI file.") from e
+        raise ValueError(f"Invalid MIDI file '{path.name}': {e}") from e
+    
     current_tempo = 500000
     current_seconds = 0.0
     channel_programs: dict[int, int] = {}
@@ -162,14 +169,16 @@ def parse_midi_file(path: Path) -> list[MidiNote]:
             continue
 
         if message.type == "program_change":
-            channel_programs[message.channel] = message.program
+            program = clamp(int(message.program), 0, 127)
+            channel_programs[message.channel] = program
             continue
 
         if message.type == "note_on" and message.velocity > 0:
             key = (message.channel, message.note)
+            velocity = clamp(int(message.velocity), 0, 127)
             active_notes[key] = (
                 current_seconds,
-                message.velocity,
+                velocity,
                 channel_programs.get(message.channel, 0),
             )
             continue
@@ -771,12 +780,15 @@ class SynthApp(ctk.CTk):
         self.midi_label_var.set(path.name)
         try:
             self.loaded_midi_notes = parse_midi_file(path)
-        except Exception:
+        except Exception as e:
+            messagebox.showerror("MIDI Load Error", str(e))
             self.loaded_midi_notes = []
+            self.midi_file_path = None
+            self.midi_label_var.set("No MIDI file loaded")
         self.midi_song_duration = max((note.start + note.duration) for note in self.loaded_midi_notes) if self.loaded_midi_notes else 0.0
         self.midi_preview_var.set(self._midi_preview_label())
         self._refresh_midi_visual()
-        self._set_status(f"Loaded MIDI file: {path.name}")
+        self._set_status(f"Loaded MIDI file: {path.name}" if self.loaded_midi_notes else "Failed to load MIDI file")
 
     def play_midi(self) -> None:
         if not self.midi_file_path:
